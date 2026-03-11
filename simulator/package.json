@@ -1,0 +1,12 @@
+{
+  "name": "smart-panchayat-simulator",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node simulate.js"
+  },
+  "dependencies": {
+    "@influxdata/influxdb-client": "^1.33.2",
+    "dotenv": "^16.3.1",
+    "mysql2": "^3.6.0"
+  }
+}

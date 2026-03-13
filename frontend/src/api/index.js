@@ -72,4 +72,7 @@ export const getMapSensors = (type) =>
 export const getMapReadings = (sensors) =>
   api.post('/sensors/map/readings', { sensors }).then(r => r.data);
 
+export const getThresholdBreaches = (params = {}) =>
+  api.get('/analytics/threshold-breaches', { params }).then(r => r.data);
+
 export default api;

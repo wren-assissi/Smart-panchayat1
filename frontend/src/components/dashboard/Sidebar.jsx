@@ -3,18 +3,21 @@ import {
   ChevronRight, ChevronDown, Users, Cpu,
   Plus, Edit2, Trash2, LogOut, Leaf,
   ChevronLeft, MapPin, Building2, Home,
-  X, Check, AlertTriangle
+  X, Check, AlertTriangle, BarChart3
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePanchayat } from '../../context/PanchayatContext';
 import VillagerFormModal from './VillagerFormModal';
 import SensorFormModal from './SensorFormModal';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 export default function Sidebar({
   collapsed, onToggle,
   villagers, sensors, onRefresh
 }) {
   const { user, logout, canWrite } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { selectedPanchayat, selectedBlock, selectedDistrict,
     districts, blocks, panchayats,
     selectDistrict, selectBlock, selectPanchayat } = usePanchayat();
@@ -63,6 +66,7 @@ export default function Sidebar({
           <Leaf className="w-6 h-6 text-green-400" />
         </div>
         <div className="flex-1 flex flex-col items-center py-4 gap-4">
+          <button onClick={() => navigate('/analytics')} className={`p-2 rounded-lg ${location.pathname === '/analytics' ? 'text-green-300 bg-green-900/30' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`} title="Analytics"><BarChart3 className="w-5 h-5" /></button>
           <button onClick={() => { onToggle(); setLocationOpen(true); }} className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800" title="Locations"><MapPin className="w-5 h-5" /></button>
           {canWrite && <>
             <button onClick={() => { onToggle(); setVillagerOpen(true); }} className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800" title="Villagers"><Users className="w-5 h-5" /></button>
@@ -112,6 +116,19 @@ export default function Sidebar({
 
         {/* Location Selector */}
         <div className="flex-shrink-0">
+          <div className="px-4 py-3 border-b border-gray-800 bg-gray-950/40">
+            <button
+              onClick={() => navigate('/analytics')}
+              className={`w-full flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
+                location.pathname === '/analytics'
+                  ? 'border-green-700/50 bg-green-900/20 text-green-300'
+                  : 'border-gray-800 bg-gray-900/40 text-gray-300 hover:border-gray-700 hover:bg-gray-800/70 hover:text-white'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4" />
+              Threshold Analytics
+            </button>
+          </div>
           <button
             onClick={() => setLocationOpen(!locationOpen)}
             className="w-full flex items-center justify-between px-4 py-3 text-xs font-semibold text-gray-400 hover:text-gray-200 uppercase tracking-wider border-b border-gray-800"

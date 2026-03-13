@@ -5,6 +5,7 @@ import { PanchayatProvider } from './context/PanchayatContext';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import MapPage from './pages/MapPage';
+import AnalyticsPage from './pages/AnalyticsPage';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -46,10 +47,13 @@ export default function App() {
             <Route path="/dashboard" element={
               <ProtectedRoute><DashboardPage /></ProtectedRoute>
             } />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
             <Route path="/map" element={
               <ProtectedRoute><MapPage /></ProtectedRoute>
             } />
+            <Route path="/analytics" element={
+              <ProtectedRoute><AnalyticsPage /></ProtectedRoute>
+            } />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </BrowserRouter>
       </PanchayatProvider>

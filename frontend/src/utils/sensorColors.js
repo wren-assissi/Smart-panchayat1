@@ -1,5 +1,5 @@
 // Returns a hex color based on sensor type and value
-export function getSensorColor(type, value) {
+export function getSensorColor(type, value, config = null) {
   if (value == null) return '#6b7280'; // gray - no data
 
   switch (type) {
@@ -9,8 +9,40 @@ export function getSensorColor(type, value) {
     case 'AirQuality':   return aqiColor(value);
     case 'WaterSalinity':return salinityColor(value);
     case 'SoilMoisture': return soilMoistureColor(value);
-    default:             return '#6b7280';
+    default:             return thresholdColor(value, config);
   }
+}
+
+export function getSensorSeverityScore(type, value, config = null) {
+  if (value == null) return 0;
+
+  switch (type) {
+    case 'Temp':
+      return clamp01(Math.abs(Number(value) - 22) / 18);
+    case 'WaterPH':
+      return clamp01(Math.abs(Number(value) - 7) / 4);
+    case 'SoilPH':
+      return clamp01(Math.abs(Number(value) - 6.8) / 4);
+    case 'AirQuality':
+      return clamp01(Number(value) / 300);
+    case 'WaterSalinity':
+      return clamp01(Number(value) / 1000);
+    case 'SoilMoisture': {
+      const numericValue = Number(value);
+      if (numericValue < 20) return clamp01((20 - numericValue) / 20);
+      if (numericValue <= 70) return 0;
+      return clamp01((numericValue - 70) / 30);
+    }
+    default:
+      return thresholdSeverity(value, config);
+  }
+}
+
+export function getHeatmapColor(score) {
+  const clampedScore = clamp01(score);
+  const hue = 120 - (clampedScore * 120);
+  const lightness = 46 + ((1 - clampedScore) * 8);
+  return hslToHex(hue, 88, lightness);
 }
 
 // Temperature: Blue (cold) → Green → Yellow → Red (hot)
@@ -68,7 +100,7 @@ function hslToHex(h, s, l) {
 }
 
 // Returns a label describing the reading
-export function getSensorLabel(type, value) {
+export function getSensorLabel(type, value, config = null) {
   if (value == null) return 'No data';
   switch (type) {
     case 'Temp':          return `${value}°C`;
@@ -77,7 +109,7 @@ export function getSensorLabel(type, value) {
     case 'AirQuality':    return `AQI ${value}`;
     case 'WaterSalinity': return `${value} ppm`;
     case 'SoilMoisture':  return `${value}%`;
-    default:              return `${value}`;
+    default:              return config?.unit ? `${value}${config.unit}` : `${value}`;
   }
 }
 
@@ -118,3 +150,108 @@ export const SENSOR_LEGENDS = {
     { color: '#3b82f6', label: '70–100% Waterlogged' },
   ],
 };
+
+function thresholdColor(value, config) {
+  if (!config?.rule_type) return '#6b7280';
+
+  const min = config.safe_min != null ? Number(config.safe_min) : null;
+  const max = config.safe_max != null ? Number(config.safe_max) : null;
+
+  if (config.rule_type === 'safe_range') {
+    if (min == null || max == null) return '#6b7280';
+    if (value < min || value > max) return '#ef4444';
+
+    const span = Math.max(max - min, 1);
+    const distanceFromCenter = Math.abs(value - ((min + max) / 2));
+    const ratio = Math.min(distanceFromCenter / (span / 2 || 1), 1);
+    return ratio > 0.7 ? '#eab308' : '#22c55e';
+  }
+
+  if (config.rule_type === 'upper_only') {
+    if (max == null) return '#6b7280';
+    if (value > max) return '#ef4444';
+    return value > max * 0.85 ? '#eab308' : '#22c55e';
+  }
+
+  if (config.rule_type === 'lower_only') {
+    if (min == null) return '#6b7280';
+    if (value < min) return '#ef4444';
+    return value < min * 1.15 ? '#eab308' : '#22c55e';
+  }
+
+  return '#6b7280';
+}
+
+function thresholdSeverity(value, config) {
+  if (!config?.rule_type) return 0;
+
+  const numericValue = Number(value);
+  const min = config.safe_min != null ? Number(config.safe_min) : null;
+  const max = config.safe_max != null ? Number(config.safe_max) : null;
+
+  if (config.rule_type === 'safe_range') {
+    if (min == null || max == null) return 0;
+    if (numericValue < min) return clamp01((min - numericValue) / Math.max(Math.abs(min), 1));
+    if (numericValue > max) return clamp01((numericValue - max) / Math.max(Math.abs(max), 1));
+
+    const span = Math.max(max - min, 1);
+    const center = (min + max) / 2;
+    const distanceFromCenter = Math.abs(numericValue - center);
+    return clamp01(distanceFromCenter / (span / 2 || 1));
+  }
+
+  if (config.rule_type === 'upper_only') {
+    if (max == null) return 0;
+    return numericValue <= max
+      ? clamp01((numericValue / Math.max(max, 1)) * 0.3)
+      : clamp01(0.3 + ((numericValue - max) / Math.max(Math.abs(max), 1)));
+  }
+
+  if (config.rule_type === 'lower_only') {
+    if (min == null) return 0;
+    return numericValue >= min
+      ? clamp01(((Math.max(min, 1) / Math.max(numericValue, 1)) - 1) * 0.1)
+      : clamp01((min - numericValue) / Math.max(Math.abs(min), 1));
+  }
+
+  return 0;
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, Number(value) || 0));
+}
+
+export function getSensorLegend(type, config = null) {
+  if (SENSOR_LEGENDS[type]) return SENSOR_LEGENDS[type];
+  if (!config?.rule_type) return [];
+
+  const unitSuffix = config.unit || '';
+  const min = config.safe_min != null ? Number(config.safe_min) : null;
+  const max = config.safe_max != null ? Number(config.safe_max) : null;
+
+  if (config.rule_type === 'safe_range' && min != null && max != null) {
+    return [
+      { color: '#22c55e', label: `${min}-${max}${unitSuffix} Safe` },
+      { color: '#eab308', label: `Near limit` },
+      { color: '#ef4444', label: `<${min}${unitSuffix} or >${max}${unitSuffix} Unsafe` },
+    ];
+  }
+
+  if (config.rule_type === 'upper_only' && max != null) {
+    return [
+      { color: '#22c55e', label: `<=${max}${unitSuffix} Safe` },
+      { color: '#eab308', label: `Near ${max}${unitSuffix}` },
+      { color: '#ef4444', label: `>${max}${unitSuffix} Unsafe` },
+    ];
+  }
+
+  if (config.rule_type === 'lower_only' && min != null) {
+    return [
+      { color: '#22c55e', label: `>=${min}${unitSuffix} Safe` },
+      { color: '#eab308', label: `Near ${min}${unitSuffix}` },
+      { color: '#ef4444', label: `<${min}${unitSuffix} Unsafe` },
+    ];
+  }
+
+  return [];
+}

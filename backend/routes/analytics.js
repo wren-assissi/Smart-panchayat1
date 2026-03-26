@@ -3,7 +3,6 @@ const router = express.Router();
 
 const db = require('../config/db');
 const { queryApi } = require('../config/influx');
-const THRESHOLDS = require('../config/thresholds');
 const { authenticate } = require('../middleware/auth');
 
 const RANGE_PATTERN = /^\d+(m|h|d)$/;
@@ -27,8 +26,45 @@ function toNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+function normalizeThreshold(ruleType, safeMin, safeMax, unit = null) {
+  return {
+    ruleType: ruleType || 'safe_range',
+    safeMin: toNumber(safeMin),
+    safeMax: toNumber(safeMax),
+    unit: unit || null,
+  };
+}
+
+function parseCustomThreshold(query) {
+  const ruleType = query.customRuleType || null;
+  const safeMin = query.customSafeMin === undefined ? null : toNumber(query.customSafeMin);
+  const safeMax = query.customSafeMax === undefined ? null : toNumber(query.customSafeMax);
+
+  if (!ruleType) return null;
+  if (!['safe_range', 'upper_only', 'lower_only'].includes(ruleType)) return null;
+
+  if (query.customSafeMin !== undefined && safeMin == null) return null;
+  if (query.customSafeMax !== undefined && safeMax == null) return null;
+
+  if (ruleType === 'safe_range' && (safeMin == null || safeMax == null)) return null;
+  if (ruleType === 'upper_only' && safeMax == null) return null;
+  if (ruleType === 'lower_only' && safeMin == null) return null;
+  if (ruleType === 'safe_range' && safeMin > safeMax) return null;
+
+  return normalizeThreshold(ruleType, safeMin, safeMax);
+}
+
 function isUnsafe(value, threshold) {
   if (value == null || !threshold) return false;
+
+  if (threshold.ruleType === 'upper_only') {
+    return threshold.safeMax != null ? value > threshold.safeMax : false;
+  }
+
+  if (threshold.ruleType === 'lower_only') {
+    return threshold.safeMin != null ? value < threshold.safeMin : false;
+  }
+
   if (threshold.safeMin != null && value < threshold.safeMin) return true;
   if (threshold.safeMax != null && value > threshold.safeMax) return true;
   return false;
@@ -132,7 +168,11 @@ router.get('/threshold-breaches', authenticate, async (req, res) => {
   const range = RANGE_PATTERN.test(req.query.range || '') ? req.query.range : '24h';
   const groupBy = ALLOWED_GROUP_BY.has(req.query.groupBy) ? req.query.groupBy : 'panchayat';
   const typeFilter = req.query.type || null;
-  const thresholdOverride = typeFilter ? THRESHOLDS[typeFilter] : null;
+  const customThreshold = parseCustomThreshold(req.query);
+
+  if ((req.query.customRuleType || req.query.customSafeMin || req.query.customSafeMax) && !customThreshold) {
+    return res.status(400).json({ error: 'Invalid custom threshold configuration' });
+  }
 
   try {
     const { clause, params } = buildScopeClause(user);
@@ -144,11 +184,17 @@ router.get('/threshold-breaches', authenticate, async (req, res) => {
         s.panchayat_id, s.district_id,
         lp.name as panchayat_name,
         lb.id as block_id, lb.name as block_name,
-        ld.id as district_id_from_hierarchy, ld.name as district_name
+        ld.id as district_id_from_hierarchy, ld.name as district_name,
+        sd.unit,
+        st.rule_type,
+        st.safe_min,
+        st.safe_max
       FROM sensors s
       LEFT JOIN locations lp ON lp.id = s.panchayat_id
       LEFT JOIN locations lb ON lb.id = lp.parent_id
       LEFT JOIN locations ld ON ld.id = lb.parent_id
+      LEFT JOIN sensor_definitions sd ON sd.sensor_key = s.type
+      LEFT JOIN sensor_thresholds st ON st.sensor_definition_id = sd.id
       WHERE s.status != 'faulty'
     `;
     const queryParams = [];
@@ -167,8 +213,14 @@ router.get('/threshold-breaches', authenticate, async (req, res) => {
     const grouped = new Map();
 
     for (const sensor of sensors) {
-      const threshold = THRESHOLDS[sensor.type];
+      const threshold = customThreshold && typeFilter
+        ? { ...customThreshold, unit: sensor.unit || null }
+        : normalizeThreshold(sensor.rule_type, sensor.safe_min, sensor.safe_max, sensor.unit);
+
       if (!threshold) continue;
+      if (threshold.ruleType === 'safe_range' && threshold.safeMin == null && threshold.safeMax == null) continue;
+      if (threshold.ruleType === 'upper_only' && threshold.safeMax == null) continue;
+      if (threshold.ruleType === 'lower_only' && threshold.safeMin == null) continue;
 
       const readings = await fetchSensorReadings(sensor, range);
       const metrics = computeBreachMetrics(readings, threshold);
@@ -250,7 +302,7 @@ router.get('/threshold-breaches', authenticate, async (req, res) => {
       groupBy,
       filters: {
         type: typeFilter,
-        threshold: thresholdOverride,
+        threshold: customThreshold && typeFilter ? { ...customThreshold } : null,
       },
       summary: {
         totalSensorsAnalyzed: sensorMetrics.length,

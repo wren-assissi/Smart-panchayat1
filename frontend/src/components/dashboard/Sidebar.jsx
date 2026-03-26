@@ -3,7 +3,7 @@ import {
   ChevronRight, ChevronDown, Users, Cpu,
   Plus, Edit2, Trash2, LogOut, Leaf,
   ChevronLeft, MapPin, Building2, Home,
-  X, Check, AlertTriangle, BarChart3
+  X, Check, AlertTriangle, BarChart3, Settings, TrendingUp
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePanchayat } from '../../context/PanchayatContext';
@@ -62,11 +62,19 @@ export default function Sidebar({
   if (collapsed) {
     return (
       <aside className="h-full flex flex-col bg-gray-900 border-r border-gray-800 w-14 sidebar-transition">
-        <div className="p-3 border-b border-gray-800 flex items-center justify-center">
-          <Leaf className="w-6 h-6 text-green-400" />
-        </div>
+        <button
+          type="button"
+          onClick={onToggle}
+          className="p-3 border-b border-gray-800 flex items-center justify-center text-green-400 hover:text-white hover:bg-gray-800 transition-colors"
+          title="Expand sidebar"
+        >
+          <Leaf className="w-6 h-6" />
+        </button>
         <div className="flex-1 flex flex-col items-center py-4 gap-4">
-          <button onClick={() => navigate('/analytics')} className={`p-2 rounded-lg ${location.pathname === '/analytics' ? 'text-green-300 bg-green-900/30' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`} title="Analytics"><BarChart3 className="w-5 h-5" /></button>
+          <button onClick={() => navigate('/dashboard')} className={`p-2 rounded-lg ${location.pathname === '/dashboard' ? 'text-green-300 bg-green-900/30' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`} title="Dashboard"><Leaf className="w-5 h-5" /></button>
+          <button onClick={() => navigate('/analytics')} className={`p-2 rounded-lg ${location.pathname === '/analytics' ? 'text-green-300 bg-green-900/30' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`} title="Threshold Analytics"><BarChart3 className="w-5 h-5" /></button>
+          <button onClick={() => navigate('/trend-analysis')} className={`p-2 rounded-lg ${location.pathname === '/trend-analysis' ? 'text-green-300 bg-green-900/30' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`} title="Trend Analysis"><TrendingUp className="w-5 h-5" /></button>
+          <button onClick={() => navigate('/settings')} className={`p-2 rounded-lg ${location.pathname === '/settings' ? 'text-green-300 bg-green-900/30' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`} title="Settings"><Settings className="w-5 h-5" /></button>
           <button onClick={() => { onToggle(); setLocationOpen(true); }} className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800" title="Locations"><MapPin className="w-5 h-5" /></button>
           {canWrite && <>
             <button onClick={() => { onToggle(); setVillagerOpen(true); }} className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800" title="Villagers"><Users className="w-5 h-5" /></button>
@@ -116,7 +124,18 @@ export default function Sidebar({
 
         {/* Location Selector */}
         <div className="flex-shrink-0">
-          <div className="px-4 py-3 border-b border-gray-800 bg-gray-950/40">
+          <div className="px-4 py-3 border-b border-gray-800 bg-gray-950/40 space-y-2">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className={`w-full flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
+                location.pathname === '/dashboard'
+                  ? 'border-green-700/50 bg-green-900/20 text-green-300'
+                  : 'border-gray-800 bg-gray-900/40 text-gray-300 hover:border-gray-700 hover:bg-gray-800/70 hover:text-white'
+              }`}
+            >
+              <Leaf className="w-4 h-4" />
+              Dashboard
+            </button>
             <button
               onClick={() => navigate('/analytics')}
               className={`w-full flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
@@ -127,6 +146,28 @@ export default function Sidebar({
             >
               <BarChart3 className="w-4 h-4" />
               Threshold Analytics
+            </button>
+            <button
+              onClick={() => navigate('/trend-analysis')}
+              className={`w-full flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
+                location.pathname === '/trend-analysis'
+                  ? 'border-green-700/50 bg-green-900/20 text-green-300'
+                  : 'border-gray-800 bg-gray-900/40 text-gray-300 hover:border-gray-700 hover:bg-gray-800/70 hover:text-white'
+              }`}
+            >
+              <TrendingUp className="w-4 h-4" />
+              Trend Analysis
+            </button>
+            <button
+              onClick={() => navigate('/settings')}
+              className={`w-full flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
+                location.pathname === '/settings'
+                  ? 'border-green-700/50 bg-green-900/20 text-green-300'
+                  : 'border-gray-800 bg-gray-900/40 text-gray-300 hover:border-gray-700 hover:bg-gray-800/70 hover:text-white'
+              }`}
+            >
+              <Settings className="w-4 h-4" />
+              Settings
             </button>
           </div>
           <button

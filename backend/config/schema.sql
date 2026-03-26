@@ -41,6 +41,37 @@ CREATE TABLE IF NOT EXISTS villagers (
   INDEX idx_name (name)
 );
 
+-- Sensor type master table
+-- Stores reusable metadata for each kind of sensor.
+CREATE TABLE IF NOT EXISTS sensor_definitions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  sensor_key VARCHAR(50) NOT NULL UNIQUE,         -- e.g., TEMP, WATER_PH, SOIL_MOISTURE
+  unit VARCHAR(30) DEFAULT NULL,                  -- e.g., C, pH, ppm, %
+  value_kind ENUM('number', 'boolean', 'enum') NOT NULL DEFAULT 'number',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_sensor_key (sensor_key)
+);
+
+-- Sensor threshold rules table
+-- Keeps threshold logic separate from sensor type identity.
+-- rule_type meanings:
+--   safe_range: safe_min <= value <= safe_max
+--   upper_only: value <= safe_max is safe
+--   lower_only: value >= safe_min is safe
+CREATE TABLE IF NOT EXISTS sensor_thresholds (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  sensor_definition_id INT NOT NULL,
+  rule_type ENUM('upper_only', 'lower_only', 'safe_range') NOT NULL,
+  safe_min DECIMAL(10, 2) DEFAULT NULL,
+  safe_max DECIMAL(10, 2) DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (sensor_definition_id) REFERENCES sensor_definitions(id) ON DELETE CASCADE,
+  UNIQUE KEY uniq_sensor_definition_threshold (sensor_definition_id),
+  INDEX idx_threshold_rule_type (rule_type)
+);
+
 -- Sensors table
 CREATE TABLE IF NOT EXISTS sensors (
   id VARCHAR(50) PRIMARY KEY,  -- e.g., SENSOR_001

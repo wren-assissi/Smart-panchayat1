@@ -3,6 +3,14 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html.light {
+    color-scheme: light;
+  }
+
   * {
     box-sizing: border-box;
   }
@@ -11,6 +19,7 @@
     font-family: 'Sora', system-ui, sans-serif;
     background: #030712;
     color: #f1f5f9;
+    transition: background-color 0.25s ease, color 0.25s ease;
   }
 
   ::-webkit-scrollbar {
@@ -142,4 +151,417 @@
 .leaflet-control-zoom a:hover {
   background: #374151 !important;
   color: white !important;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  border-radius: 9999px;
+  border: none;
+  background: rgba(17, 24, 39, 0.92);
+  color: #f9fafb;
+  padding: 0.7rem 1rem;
+  min-width: 170px;
+  justify-content: center;
+  box-shadow: 0 12px 32px rgba(2, 6, 23, 0.32);
+  backdrop-filter: blur(14px);
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.theme-toggle:hover {
+  transform: translateY(-1px);
+  border-color: rgba(34, 197, 94, 0.55);
+}
+
+.theme-toggle__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 9999px;
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+}
+
+.theme-toggle__text {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* =============================================
+   LIGHT THEME — full rewrite for visibility
+   ============================================= */
+
+html.light body {
+  /* Slightly warm off-white canvas — not blinding white, not flat grey */
+  background: #edf0f5;
+  color: #0f172a;
+}
+
+/* Scrollbars */
+html.light ::-webkit-scrollbar-track {
+  background: #dde3ec;
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: #9db0c8;
+}
+
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #6b8aad;
+}
+
+/* Theme toggle button */
+html.light .theme-toggle {
+  background: rgba(255, 255, 255, 0.97);
+  color: #0f172a;
+  box-shadow: 0 4px 16px rgba(100, 120, 160, 0.18), 0 1px 3px rgba(0,0,0,0.08);
+}
+
+html.light .theme-toggle__icon {
+  background: rgba(14, 165, 233, 0.12);
+  color: #0369a1;
+}
+
+/* Leaflet */
+html.light .leaflet-container {
+  background: #dbeafe;
+}
+
+html.light .leaflet-control-zoom {
+  box-shadow: 0 2px 8px rgba(100, 116, 139, 0.25) !important;
+}
+
+html.light .leaflet-control-zoom a {
+  background: #ffffff !important;
+  color: #1e293b !important;
+  border: 1px solid #c2cede !important;
+}
+
+html.light .leaflet-control-zoom a:hover {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+/* ── Background layers ── */
+html.light [class*="bg-gray-950"] {
+  background-color: #e8ecf2 !important;
+}
+
+html.light [class*="bg-gray-900/95"],
+html.light [class*="bg-gray-900/80"],
+html.light [class*="bg-gray-900/60"],
+html.light [class*="bg-gray-900/40"] {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(12px);
+}
+
+html.light [class*="bg-gray-900"] {
+  background-color: #ffffff !important;
+}
+
+html.light [class*="bg-gray-800"] {
+  background-color: #f1f5f9 !important;
+}
+
+html.light [class*="bg-gray-700"] {
+  background-color: #e2e8f0 !important;
+}
+
+/* ── Borders — clearly visible, not harsh ── */
+html.light [class*="border-gray-900"] {
+  border-color: #c8d4e3 !important;
+}
+
+html.light [class*="border-gray-800"] {
+  border-color: #c0ccdb !important;
+}
+
+html.light [class*="border-gray-700"] {
+  border-color: #b8c8d9 !important;
+}
+
+html.light [class*="border-gray-600"] {
+  border-color: #a8b8cc !important;
+}
+
+/* ── Text — proper contrast hierarchy ── */
+html.light [class*="text-white"] {
+  color: #0c1524 !important;
+}
+
+html.light [class*="text-gray-100"],
+html.light [class*="text-gray-200"] {
+  color: #1e293b !important;
+}
+
+html.light [class*="text-gray-300"] {
+  color: #344155 !important;
+}
+
+html.light [class*="text-gray-400"] {
+  color: #546880 !important;
+}
+
+html.light [class*="text-gray-500"] {
+  color: #637a94 !important;
+}
+
+html.light [class*="text-gray-600"] {
+  color: #4e6070 !important;
+}
+
+/* ── Accent palette in light mode ── */
+html.light [class*="bg-purple-900"] {
+  background-color: #efe4ff !important;
+}
+
+html.light [class*="border-purple-700"] {
+  border-color: #a855f7 !important;
+}
+
+html.light [class*="text-purple-400"] {
+  color: #7e22ce !important;
+}
+
+html.light [class*="bg-blue-950"] {
+  background-color: #dfebff !important;
+}
+
+html.light [class*="border-blue-800"] {
+  border-color: #7aa2f7 !important;
+}
+
+html.light [class*="border-blue-700"] {
+  border-color: #5b8def !important;
+}
+
+html.light [class*="text-blue-400"] {
+  color: #2563eb !important;
+}
+
+html.light [class*="text-blue-300"] {
+  color: #1d4ed8 !important;
+}
+
+html.light [class*="bg-amber-950"] {
+  background-color: #fff3d6 !important;
+}
+
+html.light [class*="border-amber-800"] {
+  border-color: #d97706 !important;
+}
+
+html.light [class*="text-amber-300"] {
+  color: #b45309 !important;
+}
+
+html.light [class*="bg-red-950"],
+html.light [class*="bg-red-900"] {
+  background-color: #fee2e2 !important;
+}
+
+html.light [class*="border-red-800"] {
+  border-color: #ef4444 !important;
+}
+
+html.light [class*="border-red-700"] {
+  border-color: #dc2626 !important;
+}
+
+html.light [class*="text-red-400"] {
+  color: #dc2626 !important;
+}
+
+html.light [class*="text-red-300"] {
+  color: #b91c1c !important;
+}
+
+html.light [class*="bg-green-950"],
+html.light [class*="bg-green-900"] {
+  background-color: #d1fae5 !important;
+}
+
+html.light [class*="bg-green-800"] {
+  background-color: #b7e4c7 !important;
+}
+
+html.light [class*="border-green-800"] {
+  border-color: #15803d !important;
+}
+
+html.light [class*="border-green-700"] {
+  border-color: #166534 !important;
+}
+
+html.light [class*="border-green-600"] {
+  border-color: #15803d !important;
+}
+
+html.light [class*="text-green-500"],
+html.light [class*="text-green-400"] {
+  color: #166534 !important;
+}
+
+html.light [class*="text-green-300"],
+html.light [class*="text-green-200"] {
+  color: #14532d !important;
+}
+
+html.light [class*="hover:text-white"]:hover {
+  color: #0c1524 !important;
+}
+
+/* ── Hover states ── */
+html.light [class*="hover:bg-gray-800"]:hover,
+html.light [class*="hover:bg-gray-700"]:hover {
+  background-color: #e4eaf2 !important;
+}
+
+html.light [class*="hover:bg-green-900"]:hover {
+  background-color: #bbf7d0 !important;
+}
+
+html.light [class*="hover:bg-green-500"]:hover {
+  background-color: #166534 !important;
+  color: #f8fafc !important;
+}
+
+html.light [class*="hover:text-green-300"]:hover,
+html.light [class*="hover:text-green-400"]:hover {
+  color: #14532d !important;
+}
+
+/* ── Gradient overrides ── */
+html.light [class*="from-green-950"] {
+  --tw-gradient-from: rgb(220 252 231 / 0.95) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(220 252 231 / 0) var(--tw-gradient-to-position) !important;
+}
+
+html.light [class*="from-blue-950"] {
+  --tw-gradient-from: rgb(219 234 254 / 0.95) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(219 234 254 / 0) var(--tw-gradient-to-position) !important;
+}
+
+html.light [class*="via-gray-900"] {
+  --tw-gradient-stops: var(--tw-gradient-from), #ffffff var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+}
+
+html.light [class*="to-gray-950"],
+html.light [class*="to-gray-900"] {
+  --tw-gradient-to: #eef2f9 var(--tw-gradient-to-position) !important;
+}
+
+/* ── Cards — the core fix: real depth, visible borders, subtle shadow ── */
+html.light .card {
+  background-color: #ffffff !important;
+  border: 1px solid #c0ccdb !important;
+  box-shadow:
+    0 1px 3px rgba(15, 23, 42, 0.07),
+    0 4px 12px rgba(15, 23, 42, 0.06),
+    0 0 0 0.5px rgba(15, 23, 42, 0.04) !important;
+}
+
+html.light .card-glass {
+  background-color: rgba(255, 255, 255, 0.82) !important;
+  border: 1px solid #bfcada !important;
+  backdrop-filter: blur(12px);
+  box-shadow:
+    0 1px 3px rgba(15, 23, 42, 0.06),
+    0 6px 18px rgba(15, 23, 42, 0.08) !important;
+}
+
+/* ── Buttons ── */
+html.light .btn-secondary {
+  background-color: #f8fafc !important;
+  border: 1px solid #c0ccdb !important;
+  color: #1e293b !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06) !important;
+}
+
+html.light .btn-secondary:hover {
+  background-color: #edf1f7 !important;
+  border-color: #a8b8cc !important;
+}
+
+html.light .btn-danger {
+  background-color: #fff1f2 !important;
+  border: 1px solid #fca5a5 !important;
+  color: #b91c1c !important;
+}
+
+html.light .btn-danger:hover {
+  background-color: #fee2e2 !important;
+}
+
+/* ── Inputs ── */
+html.light .input-field {
+  background-color: #ffffff !important;
+  border: 1px solid #c0ccdb !important;
+  color: #0f172a !important;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05) !important;
+}
+
+html.light .input-field::placeholder {
+  color: #94a3b8 !important;
+}
+
+html.light .input-field:focus {
+  border-color: #15803d !important;
+  box-shadow: 0 0 0 3px rgba(21, 128, 61, 0.18), inset 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+
+/* ── Labels ── */
+html.light .label {
+  color: #475569 !important;
+}
+
+/* ── Status badges ── */
+html.light .status-active {
+  background-color: #d1fae5 !important;
+  color: #14532d !important;
+  border: 1px solid #15803d !important;
+}
+
+html.light .status-inactive {
+  background-color: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #546880 !important;
+}
+
+html.light .status-faulty {
+  background-color: #fecaca !important;
+  color: #b91c1c !important;
+  border: 1px solid #ef4444 !important;
+}
+
+/* ── Sidebar / panels that use dark-tone inline bg utilities ── */
+html.light [class*="bg-gray-900/95"] {
+  box-shadow: 2px 0 16px rgba(15, 23, 42, 0.08) !important;
+}
+
+/* ── Dividers ── */
+html.light [class*="divide-gray-800"] > * + *,
+html.light [class*="divide-gray-700"] > * + * {
+  border-color: #dde4ef !important;
+}
+
+/* ── Ring / focus utilities ── */
+html.light [class*="ring-gray-700"],
+html.light [class*="ring-gray-800"] {
+  --tw-ring-color: #c0ccdb !important;
+}
+
+@media (max-width: 640px) {
+  .theme-toggle {
+    top: 0.75rem;
+    right: 0.75rem;
+    padding: 0.65rem 0.9rem;
+  }
+
+  .theme-toggle__text {
+    display: none;
+  }
 }

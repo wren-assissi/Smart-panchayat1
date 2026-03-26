@@ -1,7 +1,7 @@
 import React from 'react';
-import { Cpu, Users, Activity, AlertTriangle, WifiOff } from 'lucide-react';
+import { Cpu, Users, Activity, AlertTriangle } from 'lucide-react';
 
-export default function StatsBar({ stats, panchayatName, loading }) {
+export default function StatsBar({ stats, loading }) {
   if (loading) {
     return (
       <div className="flex items-center gap-3">

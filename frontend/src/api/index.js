@@ -12,8 +12,8 @@ api.interceptors.request.use((config) => {
 });
 
 // Villagers
-export const getVillagers = (panchayatId, search = '') =>
-  api.get('/villagers', { params: { panchayatId, search } }).then(r => r.data);
+export const getVillagers = (scope = {}, search = '') =>
+  api.get('/villagers', { params: { ...scope, search } }).then(r => r.data);
 
 export const getVillager = (id) =>
   api.get(`/villagers/${id}`).then(r => r.data);
@@ -28,8 +28,8 @@ export const deleteVillager = (id) =>
   api.delete(`/villagers/${id}`).then(r => r.data);
 
 // Sensors
-export const getSensors = (panchayatId, search = '', type = '') =>
-  api.get('/sensors', { params: { panchayatId, search, type } }).then(r => r.data);
+export const getSensors = (scope = {}, search = '', type = '') =>
+  api.get('/sensors', { params: { ...scope, search, type } }).then(r => r.data);
 
 export const getSensor = (id) =>
   api.get(`/sensors/${id}`).then(r => r.data);
@@ -43,14 +43,23 @@ export const createSensor = (data) =>
 export const updateSensor = (id, data) =>
   api.put(`/sensors/${id}`, data).then(r => r.data);
 
+export const getSensorTypes = () =>
+  api.get('/sensors/types').then(r => r.data);
+
+export const createSensorType = (data) =>
+  api.post('/sensors/types', data).then(r => r.data);
+
 export const deleteSensor = (id) =>
   api.delete(`/sensors/${id}`).then(r => r.data);
 
-export const getDashboardStats = (panchayatId) =>
-  api.get(`/sensors/stats/${panchayatId}`).then(r => r.data);
+export const getDashboardStats = (scope = {}) =>
+  api.get('/sensors/stats', { params: scope }).then(r => r.data);
 
-export const getAggregateReport = () =>
-  api.get('/sensors/aggregate/report').then(r => r.data);
+export const getAggregateReport = (params = {}) =>
+  api.get('/sensors/aggregate/report', { params }).then(r => r.data);
+
+export const getTrendAnalysis = (params = {}) =>
+  api.get('/sensors/trend-analysis', { params }).then(r => r.data);
 
 export const searchVillagersByPhone = (panchayatId, q) =>
   api.get('/villagers/search/phone', { params: { panchayatId, q } }).then(r => r.data);

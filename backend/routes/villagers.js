@@ -3,20 +3,163 @@ const router = express.Router();
 const db = require('../config/db');
 const { authenticate, requirePanchayatRole, checkPanchayatAccess } = require('../middleware/auth');
 
-// GET /api/villagers?panchayatId=X&search=name
+function parseLocationId(value) {
+  if (value == null || value === '') return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+async function resolveVillagerScope(user, query) {
+  const districtId = parseLocationId(query.districtId);
+  const blockId = parseLocationId(query.blockId);
+  const panchayatId = parseLocationId(query.panchayatId);
+
+  if ((query.districtId && !districtId) || (query.blockId && !blockId) || (query.panchayatId && !panchayatId)) {
+    const err = new Error('Invalid location filter');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (panchayatId) {
+    const [rows] = await db.query(
+      `SELECT p.id as panchayat_id,
+              b.id as block_id,
+              d.id as district_id
+       FROM locations p
+       JOIN locations b ON b.id = p.parent_id
+       JOIN locations d ON d.id = b.parent_id
+       WHERE p.id = ? AND p.type = 'panchayat'`,
+      [panchayatId]
+    );
+
+    if (!rows.length) {
+      const err = new Error('Panchayat not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const location = rows[0];
+    if ((blockId && location.block_id !== blockId) || (districtId && location.district_id !== districtId)) {
+      const err = new Error('Selected panchayat does not belong to the chosen parent location');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (user.role === 'district' && location.district_id !== user.location_id) {
+      const err = new Error('Access denied: different district');
+      err.statusCode = 403;
+      throw err;
+    }
+    if (user.role === 'block' && location.block_id !== user.location_id) {
+      const err = new Error('Access denied: different block');
+      err.statusCode = 403;
+      throw err;
+    }
+    if (user.role === 'panchayat' && location.panchayat_id !== user.location_id) {
+      const err = new Error('Access denied: different panchayat');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    return { clause: ' AND v.panchayat_id = ?', params: [location.panchayat_id] };
+  }
+
+  if (blockId) {
+    const [rows] = await db.query(
+      `SELECT b.id as block_id,
+              d.id as district_id
+       FROM locations b
+       JOIN locations d ON d.id = b.parent_id
+       WHERE b.id = ? AND b.type = 'block'`,
+      [blockId]
+    );
+
+    if (!rows.length) {
+      const err = new Error('Block not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const location = rows[0];
+    if (districtId && location.district_id !== districtId) {
+      const err = new Error('Selected block does not belong to the chosen district');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (user.role === 'district' && location.district_id !== user.location_id) {
+      const err = new Error('Access denied: different district');
+      err.statusCode = 403;
+      throw err;
+    }
+    if (user.role === 'block' && location.block_id !== user.location_id) {
+      const err = new Error('Access denied: different block');
+      err.statusCode = 403;
+      throw err;
+    }
+    if (user.role === 'panchayat') {
+      const err = new Error('Access denied');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    return { clause: ' AND b.id = ?', params: [location.block_id] };
+  }
+
+  if (districtId) {
+    const [rows] = await db.query(
+      "SELECT id FROM locations WHERE id = ? AND type = 'district'",
+      [districtId]
+    );
+
+    if (!rows.length) {
+      const err = new Error('District not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (user.role === 'district' && districtId !== user.location_id) {
+      const err = new Error('Access denied: different district');
+      err.statusCode = 403;
+      throw err;
+    }
+    if (user.role === 'block' || user.role === 'panchayat') {
+      const err = new Error('Access denied');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    return { clause: ' AND d.id = ?', params: [districtId] };
+  }
+
+  if (user.role === 'panchayat') {
+    return { clause: ' AND v.panchayat_id = ?', params: [user.location_id] };
+  }
+  if (user.role === 'block') {
+    return { clause: ' AND b.id = ?', params: [user.location_id] };
+  }
+  if (user.role === 'district') {
+    return { clause: ' AND d.id = ?', params: [user.location_id] };
+  }
+
+  return { clause: '', params: [] };
+}
+
+// GET /api/villagers?districtId=X&blockId=Y&panchayatId=Z&search=name
 router.get('/', authenticate, async (req, res) => {
-  const { panchayatId, search } = req.query;
-  if (!panchayatId) return res.status(400).json({ error: 'panchayatId required' });
+  const { search } = req.query;
 
   try {
+    const { clause, params: scopeParams } = await resolveVillagerScope(req.user, req.query);
     let query = `
       SELECT v.*, 
         COUNT(s.id) as sensor_count
       FROM villagers v
+      LEFT JOIN locations p ON p.id = v.panchayat_id
+      LEFT JOIN locations b ON b.id = p.parent_id
+      LEFT JOIN locations d ON d.id = b.parent_id
       LEFT JOIN sensors s ON s.villager_id = v.id
-      WHERE v.panchayat_id = ?
+      WHERE 1=1 ${clause}
     `;
-    const params = [panchayatId];
+    const params = [...scopeParams];
 
     if (search) {
       query += ' AND v.name LIKE ?';
@@ -28,7 +171,7 @@ router.get('/', authenticate, async (req, res) => {
     const [rows] = await db.query(query, params);
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 

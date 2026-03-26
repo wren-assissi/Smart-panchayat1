@@ -1,19 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Pane, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useAuth } from '../context/AuthContext';
 import { usePanchayat } from '../context/PanchayatContext';
-import { getMapSensors, getMapReadings } from '../api';
-import { getSensorColor, getSensorLabel, SENSOR_LEGENDS } from '../utils/sensorColors';
+import { getMapSensors, getMapReadings, getSensorTypes } from '../api';
+import { getSensorColor, getSensorLabel, getSensorLegend, getSensorSeverityScore, getHeatmapColor } from '../utils/sensorColors';
 import { Layers, RefreshCw, ChevronLeft, Loader, Cpu, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const SENSOR_TYPES = ['Temp', 'WaterPH', 'WaterSalinity', 'SoilMoisture', 'SoilPH', 'AirQuality'];
-
 // ── SVG pin icon ─────────────────────────────────────────────────────────────
-function createPinIcon(color, value, type) {
-  const label = value != null ? getSensorLabel(type, value) : '?';
+function createPinIcon(color, value, type, config) {
+  const label = value != null ? getSensorLabel(type, value, config) : '?';
   const displayLabel = label.length > 7 ? label.slice(0, 7) : label;
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="44" height="56" viewBox="0 0 44 56">
@@ -118,13 +116,125 @@ function FitBounds({ feature }) {
   return null;
 }
 
+function buildHeatmapHotspots(sensors, readings, selectedType, selectedTypeDefinition) {
+  const grouped = new Map();
+
+  sensors.forEach((sensor) => {
+    const latitude = Number.parseFloat(sensor.latitude);
+    const longitude = Number.parseFloat(sensor.longitude);
+    const reading = readings[sensor.id];
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || reading == null) return;
+
+    const key = `${latitude.toFixed(3)}:${longitude.toFixed(3)}`;
+    const severity = getSensorSeverityScore(selectedType, reading, selectedTypeDefinition);
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        latitude: 0,
+        longitude: 0,
+        severityTotal: 0,
+        readingTotal: 0,
+        readingCount: 0,
+        sensors: [],
+      });
+    }
+
+    const group = grouped.get(key);
+    group.latitude += latitude;
+    group.longitude += longitude;
+    group.severityTotal += severity;
+    group.readingTotal += reading;
+    group.readingCount += 1;
+    group.sensors.push(sensor);
+  });
+
+  return Array.from(grouped.values())
+    .map((group) => ({
+      latitude: group.latitude / group.readingCount,
+      longitude: group.longitude / group.readingCount,
+      averageSeverity: group.severityTotal / group.readingCount,
+      averageReading: group.readingTotal / group.readingCount,
+      sensorCount: group.readingCount,
+      sensors: group.sensors,
+    }))
+    .sort((a, b) => b.averageSeverity - a.averageSeverity);
+}
+
+function HeatmapSpot({ spot, selectedType, selectedTypeDefinition }) {
+  const color = getHeatmapColor(spot.averageSeverity);
+  const outerRadius = 1600 + (spot.averageSeverity * 3600) + (Math.max(spot.sensorCount - 1, 0) * 250);
+  const midRadius = outerRadius * 0.65;
+  const innerRadius = outerRadius * 0.32;
+  const averageLabel = getSensorLabel(selectedType, Number(spot.averageReading.toFixed(2)), selectedTypeDefinition);
+  const severityLabel = spot.averageSeverity >= 0.75
+    ? 'High'
+    : spot.averageSeverity >= 0.4
+      ? 'Moderate'
+      : 'Low';
+
+  return (
+    <>
+      <Circle
+        center={[spot.latitude, spot.longitude]}
+        radius={outerRadius}
+        pathOptions={{ stroke: false, fillColor: color, fillOpacity: 0.12 }}
+      />
+      <Circle
+        center={[spot.latitude, spot.longitude]}
+        radius={midRadius}
+        pathOptions={{ stroke: false, fillColor: color, fillOpacity: 0.2 }}
+      />
+      <Circle
+        center={[spot.latitude, spot.longitude]}
+        radius={innerRadius}
+        pathOptions={{ stroke: false, fillColor: color, fillOpacity: 0.34 }}
+      >
+        <Popup minWidth={220}>
+          <div style={{ fontFamily: 'Sora, system-ui, sans-serif', minWidth: 220 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
+              <span style={{ fontWeight: 700, color: '#111827', fontSize: 13 }}>
+                {selectedType} Heatmap Hotspot
+              </span>
+            </div>
+            <table style={{ width: '100%', fontSize: 11, color: '#374151', borderCollapse: 'collapse' }}>
+              <tbody>
+                <tr>
+                  <td style={{ fontWeight: 600, paddingRight: 8, paddingBottom: 4, color: '#6b7280' }}>Average reading</td>
+                  <td style={{ paddingBottom: 4 }}>{averageLabel}</td>
+                </tr>
+                <tr>
+                  <td style={{ fontWeight: 600, paddingRight: 8, paddingBottom: 4, color: '#6b7280' }}>Average severity</td>
+                  <td style={{ paddingBottom: 4 }}>{severityLabel}</td>
+                </tr>
+                <tr>
+                  <td style={{ fontWeight: 600, paddingRight: 8, paddingBottom: 4, color: '#6b7280' }}>Sensors included</td>
+                  <td style={{ paddingBottom: 4 }}>{spot.sensorCount}</td>
+                </tr>
+                <tr>
+                  <td style={{ fontWeight: 600, paddingRight: 8, color: '#6b7280', verticalAlign: 'top' }}>Sensor IDs</td>
+                  <td>{spot.sensors.map((sensor) => sensor.id).join(', ')}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </Popup>
+      </Circle>
+    </>
+  );
+}
+
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function MapPage() {
   const { user } = useAuth();
   const { selectedDistrict } = usePanchayat();
   const navigate = useNavigate();
 
-  const [selectedType, setSelectedType] = useState('Temp');
+  const [sensorTypes, setSensorTypes] = useState([]);
+  const [sensorTypeConfig, setSensorTypeConfig] = useState({});
+  const [selectedType, setSelectedType] = useState('');
+  const [mapMode, setMapMode] = useState('pins');
   const [sensors, setSensors] = useState([]);
   const [readings, setReadings] = useState({});
 
@@ -148,6 +258,35 @@ export default function MapPage() {
         setDistrictGeoJson(districtData);
       })
       .catch(() => setGeoError('Failed to load boundary files. Make sure kerala.geojson and districts.geojson are in frontend/public/'));
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadSensorTypes = async () => {
+      try {
+        const rows = await getSensorTypes();
+        if (!active) return;
+
+        const types = rows.map((row) => row.sensor_key);
+        const typeConfig = Object.fromEntries(
+          rows.map((row) => [row.sensor_key, row])
+        );
+        setSensorTypes(types);
+        setSensorTypeConfig(typeConfig);
+        setSelectedType((current) => current || types[0] || '');
+      } catch {
+        if (!active) return;
+        setSensorTypes([]);
+        setSensorTypeConfig({});
+      }
+    };
+
+    loadSensorTypes();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   // ── Select boundary based on role ─────────────────────────────────────────
@@ -188,6 +327,12 @@ export default function MapPage() {
 
   // ── Load sensors + readings ───────────────────────────────────────────────
   const loadSensors = useCallback(async () => {
+    if (!selectedType) {
+      setSensors([]);
+      setReadings({});
+      return;
+    }
+
     setLoading(true);
     setDataError('');
     setSensors([]);
@@ -241,7 +386,9 @@ export default function MapPage() {
     panchayat: user.location_name,
   }[user.role] || user.location_name;
 
-  const legend = SENSOR_LEGENDS[selectedType] || [];
+  const selectedTypeDefinition = sensorTypeConfig[selectedType] || null;
+  const legend = getSensorLegend(selectedType, selectedTypeDefinition);
+  const heatmapHotspots = buildHeatmapHotspots(sensors, readings, selectedType, selectedTypeDefinition);
   const error = geoError || dataError;
 
   return (
@@ -265,13 +412,37 @@ export default function MapPage() {
         </div>
 
         <div className="ml-auto flex items-center gap-3">
+          <div className="flex items-center rounded-lg border border-gray-700 bg-gray-800/80 p-0.5">
+            <button
+              onClick={() => setMapMode('pins')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                mapMode === 'pins'
+                  ? 'bg-green-500 text-gray-950'
+                  : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              Pins
+            </button>
+            <button
+              onClick={() => setMapMode('heatmap')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                mapMode === 'heatmap'
+                  ? 'bg-green-500 text-gray-950'
+                  : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              Heatmap
+            </button>
+          </div>
+
           {/* Sensor type selector */}
           <select
             value={selectedType}
             onChange={e => setSelectedType(e.target.value)}
             className="bg-gray-800 border border-gray-700 text-gray-100 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-green-500 cursor-pointer"
+            disabled={sensorTypes.length === 0}
           >
-            {SENSOR_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            {sensorTypes.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
 
           <button
@@ -327,11 +498,10 @@ export default function MapPage() {
             </>
           )}
 
-          {/* Sensor pins */}
-          {sensors.map(sensor => {
+          {mapMode === 'pins' && sensors.map(sensor => {
             const value = readings[sensor.id] ?? null;
-            const color = getSensorColor(selectedType, value);
-            const icon = createPinIcon(color, value, selectedType);
+            const color = getSensorColor(selectedType, value, selectedTypeDefinition);
+            const icon = createPinIcon(color, value, selectedType, selectedTypeDefinition);
 
             return (
               <Marker
@@ -341,8 +511,6 @@ export default function MapPage() {
               >
                 <Popup minWidth={210}>
                   <div style={{ fontFamily: 'Sora, system-ui, sans-serif', minWidth: 210 }}>
-
-                    {/* Header */}
                     <div style={{
                       display: 'flex', alignItems: 'center', gap: 8,
                       marginBottom: 10, paddingBottom: 8,
@@ -357,21 +525,19 @@ export default function MapPage() {
                       </span>
                     </div>
 
-                    {/* Live reading */}
                     <div style={{
                       textAlign: 'center', padding: '10px 8px', marginBottom: 10,
                       borderRadius: 8, backgroundColor: color + '18',
                       border: `1px solid ${color}40`
                     }}>
                       <div style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1 }}>
-                        {value != null ? getSensorLabel(selectedType, value) : '—'}
+                        {value != null ? getSensorLabel(selectedType, value, selectedTypeDefinition) : '—'}
                       </div>
                       <div style={{ fontSize: 11, color: '#6b7280', marginTop: 3 }}>
                         {value != null ? 'Live reading' : 'No data yet'}
                       </div>
                     </div>
 
-                    {/* Details table */}
                     <table style={{ width: '100%', fontSize: 11, color: '#374151', borderCollapse: 'collapse' }}>
                       <tbody>
                         {sensor.name && (
@@ -435,27 +601,62 @@ export default function MapPage() {
               </Marker>
             );
           })}
+
+          {mapMode === 'heatmap' && (
+            <Pane name="heatmap-pane" style={{ zIndex: 430 }}>
+              {heatmapHotspots.map((spot, index) => (
+                <HeatmapSpot
+                  key={`${spot.latitude}-${spot.longitude}-${index}`}
+                  spot={spot}
+                  selectedType={selectedType}
+                  selectedTypeDefinition={selectedTypeDefinition}
+                />
+              ))}
+            </Pane>
+          )}
         </MapContainer>
 
         {/* ── Legend ── */}
         <div style={{ zIndex: 400 }} className="absolute bottom-6 right-4 bg-gray-900/95 border border-gray-700 rounded-xl p-3 min-w-[170px] shadow-xl">
           <div className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2.5">
-            {selectedType} Legend
+            {mapMode === 'pins' ? `${selectedType} Legend` : `${selectedType} Heatmap`}
           </div>
           <div className="space-y-1.5">
-            {legend.map((item, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <div
-                  className="w-3 h-3 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: item.color }}
-                />
-                <span className="text-xs text-gray-400">{item.label}</span>
-              </div>
-            ))}
-            <div className="flex items-center gap-2 pt-1.5 mt-1 border-t border-gray-700">
-              <div className="w-3 h-3 rounded-full flex-shrink-0 bg-gray-500" />
-              <span className="text-xs text-gray-500">No data</span>
-            </div>
+            {mapMode === 'pins' ? (
+              <>
+                {legend.map((item, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <div
+                      className="w-3 h-3 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <span className="text-xs text-gray-400">{item.label}</span>
+                  </div>
+                ))}
+                <div className="flex items-center gap-2 pt-1.5 mt-1 border-t border-gray-700">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0 bg-gray-500" />
+                  <span className="text-xs text-gray-500">No data</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: getHeatmapColor(0.2) }} />
+                  <span className="text-xs text-gray-400">Low average severity</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: getHeatmapColor(0.5) }} />
+                  <span className="text-xs text-gray-400">Moderate average severity</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: getHeatmapColor(0.85) }} />
+                  <span className="text-xs text-gray-400">High average severity</span>
+                </div>
+                <div className="pt-1.5 mt-1 border-t border-gray-700 text-xs text-gray-500 leading-relaxed">
+                  Hotspots blend nearby sensor readings and use the average severity for each area.
+                </div>
+              </>
+            )}
           </div>
         </div>
 

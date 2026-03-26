@@ -2,10 +2,13 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PanchayatProvider } from './context/PanchayatContext';
+import { ThemeProvider } from './context/ThemeContext';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import MapPage from './pages/MapPage';
 import AnalyticsPage from './pages/AnalyticsPage';
+import SettingsPage from './pages/SettingsPage';
+import TrendAnalysisPage from './pages/TrendAnalysisPage';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -37,26 +40,34 @@ function PublicRoute({ children }) {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <PanchayatProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={
-              <PublicRoute><LoginPage /></PublicRoute>
-            } />
-            <Route path="/dashboard" element={
-              <ProtectedRoute><DashboardPage /></ProtectedRoute>
-            } />
-            <Route path="/map" element={
-              <ProtectedRoute><MapPage /></ProtectedRoute>
-            } />
-            <Route path="/analytics" element={
-              <ProtectedRoute><AnalyticsPage /></ProtectedRoute>
-            } />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
-        </BrowserRouter>
-      </PanchayatProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <PanchayatProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={
+                <PublicRoute><LoginPage /></PublicRoute>
+              } />
+              <Route path="/dashboard" element={
+                <ProtectedRoute><DashboardPage /></ProtectedRoute>
+              } />
+              <Route path="/map" element={
+                <ProtectedRoute><MapPage /></ProtectedRoute>
+              } />
+              <Route path="/analytics" element={
+                <ProtectedRoute><AnalyticsPage /></ProtectedRoute>
+              } />
+              <Route path="/trend-analysis" element={
+                <ProtectedRoute><TrendAnalysisPage /></ProtectedRoute>
+              } />
+              <Route path="/settings" element={
+                <ProtectedRoute><SettingsPage /></ProtectedRoute>
+              } />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </PanchayatProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

@@ -3,18 +3,17 @@ import { AlertTriangle, BarChart3, Clock3, MapPin, ShieldAlert, Siren } from 'lu
 import { useNavigate } from 'react-router-dom';
 
 import Sidebar from '../components/dashboard/Sidebar';
-import { getSensors, getThresholdBreaches, getVillagers } from '../api';
+import { getSensorTypes, getSensors, getThresholdBreaches, getVillagers } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { usePanchayat } from '../context/PanchayatContext';
+import usePersistentSidebar from '../hooks/usePersistentSidebar';
 
 const RANGE_OPTIONS = ['24h', '7d', '30d'];
-const GROUP_OPTIONS = [
-  { value: 'sensor', label: 'Sensor' },
-  { value: 'panchayat', label: 'Panchayat' },
-  { value: 'block', label: 'Block' },
-  { value: 'district', label: 'District' },
+const TOP_SENSOR_SORT_OPTIONS = [
+  { value: 'breachCount', label: 'No. of breaches' },
+  { value: 'totalUnsafeHours', label: 'Total time' },
+  { value: 'longestUnsafeHours', label: 'Longest breach' },
 ];
-const TYPE_OPTIONS = ['All', 'Temp', 'WaterPH', 'SoilPH', 'AirQuality', 'WaterSalinity', 'SoilMoisture'];
 
 function formatHours(value) {
   return `${Number(value || 0).toFixed(2)}h`;
@@ -30,19 +29,69 @@ function getGoogleMapsUrl(latitude, longitude) {
   return `https://www.google.com/maps?q=${latitude},${longitude}`;
 }
 
+function formatThresholdLabel(threshold) {
+  if (!threshold) return 'Not configured';
+
+  const unit = threshold.unit ? ` ${threshold.unit}` : '';
+
+  if (threshold.ruleType === 'upper_only') {
+    return `<= ${threshold.safeMax}${unit}`;
+  }
+
+  if (threshold.ruleType === 'lower_only') {
+    return `>= ${threshold.safeMin}${unit}`;
+  }
+
+  return `${threshold.safeMin} to ${threshold.safeMax}${unit}`;
+}
+
+function getGroupOptionsForRole(role) {
+  if (role === 'panchayat') {
+    return [{ value: 'panchayat', label: 'Panchayat' }];
+  }
+  if (role === 'block') {
+    return [
+      { value: 'block', label: 'Block' },
+      { value: 'panchayat', label: 'Panchayat' },
+    ];
+  }
+  if (role === 'district') {
+    return [
+      { value: 'district', label: 'District' },
+      { value: 'block', label: 'Block' },
+      { value: 'panchayat', label: 'Panchayat' },
+    ];
+  }
+  if (role === 'state') {
+    return [
+      { value: 'district', label: 'District' },
+      { value: 'block', label: 'Block' },
+      { value: 'panchayat', label: 'Panchayat' },
+    ];
+  }
+  return [{ value: 'panchayat', label: 'Panchayat' }];
+}
+
 export default function AnalyticsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { selectedPanchayat } = usePanchayat();
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = usePersistentSidebar();
   const [villagers, setVillagers] = useState([]);
   const [sensors, setSensors] = useState([]);
+  const [sensorTypes, setSensorTypes] = useState([]);
   const [sidebarLoading, setSidebarLoading] = useState(false);
 
   const [range, setRange] = useState('7d');
-  const [groupBy, setGroupBy] = useState(user?.role === 'state' ? 'district' : 'panchayat');
+  const groupOptions = useMemo(() => getGroupOptionsForRole(user?.role), [user?.role]);
+  const [groupBy, setGroupBy] = useState(() => getGroupOptionsForRole(user?.role)[0]?.value || 'panchayat');
   const [type, setType] = useState('All');
+  const [useCustomThreshold, setUseCustomThreshold] = useState(false);
+  const [customRuleType, setCustomRuleType] = useState('safe_range');
+  const [customSafeMin, setCustomSafeMin] = useState('');
+  const [customSafeMax, setCustomSafeMax] = useState('');
+  const [topSensorSortBy, setTopSensorSortBy] = useState('breachCount');
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -74,31 +123,93 @@ export default function AnalyticsPage() {
     setLoading(true);
     setError('');
     try {
-      const data = await getThresholdBreaches({
+      const params = {
         range,
         groupBy,
         ...(type !== 'All' ? { type } : {}),
-      });
+      };
+
+      if (type !== 'All' && useCustomThreshold) {
+        params.customRuleType = customRuleType;
+        if (customRuleType !== 'upper_only') params.customSafeMin = customSafeMin;
+        if (customRuleType !== 'lower_only') params.customSafeMax = customSafeMax;
+      }
+
+      const data = await getThresholdBreaches(params);
       setAnalytics(data);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to load threshold analytics');
     } finally {
       setLoading(false);
     }
-  }, [groupBy, range, type]);
+  }, [customRuleType, customSafeMax, customSafeMin, groupBy, range, type, useCustomThreshold]);
 
   useEffect(() => {
     fetchSidebarData();
   }, [fetchSidebarData]);
 
   useEffect(() => {
+    let active = true;
+
+    const loadSensorTypes = async () => {
+      try {
+        const rows = await getSensorTypes();
+        if (!active) return;
+        setSensorTypes(rows);
+      } catch {
+        if (!active) return;
+        setSensorTypes([]);
+      }
+    };
+
+    loadSensorTypes();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     fetchAnalytics();
   }, [fetchAnalytics]);
+
+  useEffect(() => {
+    if (!groupOptions.some((option) => option.value === groupBy)) {
+      setGroupBy(groupOptions[0]?.value || 'panchayat');
+    }
+  }, [groupBy, groupOptions]);
 
   const onRefresh = useCallback(() => {
     fetchSidebarData();
     fetchAnalytics();
   }, [fetchAnalytics, fetchSidebarData]);
+
+  const typeOptions = useMemo(
+    () => ['All', ...sensorTypes.map((sensorType) => sensorType.sensor_key)],
+    [sensorTypes]
+  );
+
+  const selectedTypeDefinition = useMemo(
+    () => sensorTypes.find((sensorType) => sensorType.sensor_key === type) || null,
+    [sensorTypes, type]
+  );
+
+  useEffect(() => {
+    if (type === 'All') {
+      setUseCustomThreshold(false);
+      return;
+    }
+
+    if (!selectedTypeDefinition) return;
+
+    setCustomRuleType(selectedTypeDefinition.rule_type || 'safe_range');
+    setCustomSafeMin(
+      selectedTypeDefinition.safe_min == null ? '' : String(selectedTypeDefinition.safe_min)
+    );
+    setCustomSafeMax(
+      selectedTypeDefinition.safe_max == null ? '' : String(selectedTypeDefinition.safe_max)
+    );
+  }, [selectedTypeDefinition, type]);
 
   const summaryCards = useMemo(() => {
     const summary = analytics?.summary || {};
@@ -130,6 +241,23 @@ export default function AnalyticsPage() {
     ];
   }, [analytics]);
 
+  const rankedTopSensors = useMemo(() => {
+    const sensorsWithBreaches = (analytics?.sensors || []).filter((sensor) => sensor.breachCount > 0);
+
+    return [...sensorsWithBreaches]
+      .sort((a, b) => {
+        if ((b[topSensorSortBy] || 0) !== (a[topSensorSortBy] || 0)) {
+          return (b[topSensorSortBy] || 0) - (a[topSensorSortBy] || 0);
+        }
+        if (b.breachCount !== a.breachCount) return b.breachCount - a.breachCount;
+        if ((b.totalUnsafeHours || 0) !== (a.totalUnsafeHours || 0)) {
+          return (b.totalUnsafeHours || 0) - (a.totalUnsafeHours || 0);
+        }
+        return (b.longestUnsafeHours || 0) - (a.longestUnsafeHours || 0);
+      })
+      .slice(0, 10);
+  }, [analytics?.sensors, topSensorSortBy]);
+
   return (
     <div className="h-screen flex overflow-hidden bg-gray-950">
       <Sidebar
@@ -155,12 +283,20 @@ export default function AnalyticsPage() {
               <select value={range} onChange={(e) => setRange(e.target.value)} className="input-field min-w-28">
                 {RANGE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
               </select>
-              <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)} className="input-field min-w-36">
-                {GROUP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
               <select value={type} onChange={(e) => setType(e.target.value)} className="input-field min-w-40">
-                {TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                {typeOptions.map((option) => <option key={option} value={option}>{option}</option>)}
               </select>
+              {type !== 'All' && (
+                <label className="flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-950/60 px-3 py-2 text-sm text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={useCustomThreshold}
+                    onChange={(e) => setUseCustomThreshold(e.target.checked)}
+                    className="rounded border-gray-700 bg-gray-900 text-green-500 focus:ring-green-500"
+                  />
+                  Use custom threshold
+                </label>
+              )}
               <button onClick={fetchAnalytics} className="btn-secondary">
                 Refresh
               </button>
@@ -173,6 +309,57 @@ export default function AnalyticsPage() {
 
         <main className="flex-1 overflow-y-auto p-6">
           <div className="space-y-6 fade-in-up">
+            {type !== 'All' && useCustomThreshold && (
+              <section className="card p-5">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
+                  <div className="min-w-0 lg:w-56">
+                    <label className="label">Custom Rule Type</label>
+                    <select
+                      value={customRuleType}
+                      onChange={(e) => setCustomRuleType(e.target.value)}
+                      className="input-field"
+                    >
+                      <option value="safe_range">Safe range</option>
+                      <option value="lower_only">Lower bound</option>
+                      <option value="upper_only">Upper bound</option>
+                    </select>
+                  </div>
+
+                  {customRuleType !== 'upper_only' && (
+                    <div className="min-w-0 lg:w-44">
+                      <label className="label">Minimum Value</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={customSafeMin}
+                        onChange={(e) => setCustomSafeMin(e.target.value)}
+                        className="input-field font-mono"
+                        placeholder="e.g. 30"
+                      />
+                    </div>
+                  )}
+
+                  {customRuleType !== 'lower_only' && (
+                    <div className="min-w-0 lg:w-44">
+                      <label className="label">Maximum Value</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={customSafeMax}
+                        onChange={(e) => setCustomSafeMax(e.target.value)}
+                        className="input-field font-mono"
+                        placeholder="e.g. 70"
+                      />
+                    </div>
+                  )}
+
+                  <div className="text-xs text-gray-500 lg:pb-2">
+                    Applies only to this analytics view.
+                  </div>
+                </div>
+              </section>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               {summaryCards.map((card) => (
                 <section key={card.label} className={`rounded-2xl border p-4 ${card.className}`}>
@@ -194,9 +381,20 @@ export default function AnalyticsPage() {
 
             <section className="grid grid-cols-1 xl:grid-cols-[1.3fr_1fr] gap-6">
               <div className="card p-5">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-400" />
-                  <h2 className="text-lg font-semibold text-white">Top Breached Sensors</h2>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-400" />
+                    <h2 className="text-lg font-semibold text-white">Top Breached Sensors</h2>
+                  </div>
+                  <select
+                    value={topSensorSortBy}
+                    onChange={(e) => setTopSensorSortBy(e.target.value)}
+                    className="input-field min-w-40"
+                  >
+                    {TOP_SENSOR_SORT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full text-sm">
@@ -212,13 +410,13 @@ export default function AnalyticsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {(analytics?.topSensors || []).length === 0 ? (
+                      {rankedTopSensors.length === 0 ? (
                         <tr>
                           <td colSpan={7} className="px-3 py-6 text-center text-gray-500">
                             {loading ? 'Loading breach analytics...' : 'No threshold breaches found for this filter.'}
                           </td>
                         </tr>
-                      ) : (analytics?.topSensors || []).map((sensor) => (
+                      ) : rankedTopSensors.map((sensor) => (
                         <tr key={sensor.sensorId} className="border-b border-gray-900/80">
                           <td className="px-3 py-3">
                             <div className="font-mono text-gray-100">{sensor.sensorId}</div>
@@ -253,9 +451,19 @@ export default function AnalyticsPage() {
               </div>
 
               <div className="card p-5">
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-green-400" />
-                  <h2 className="text-lg font-semibold text-white">Repeatedly Affected Areas</h2>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-green-400" />
+                    <h2 className="text-lg font-semibold text-white">Repeatedly Affected Areas</h2>
+                  </div>
+                  <select
+                    value={groupBy}
+                    onChange={(e) => setGroupBy(e.target.value)}
+                    className="input-field min-w-36"
+                    disabled={groupOptions.length === 1}
+                  >
+                    {groupOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
                 </div>
                 <div className="mt-4 space-y-3">
                   {(analytics?.groups || []).length === 0 ? (
@@ -350,7 +558,7 @@ export default function AnalyticsPage() {
                           )}
                         </td>
                         <td className="px-3 py-3 text-gray-300">
-                          {sensor.threshold.safeMin} to {sensor.threshold.safeMax} {sensor.threshold.unit}
+                          {formatThresholdLabel(sensor.threshold)}
                         </td>
                         <td className="px-3 py-3 font-semibold text-red-300">{sensor.breachCount}</td>
                         <td className="px-3 py-3 text-gray-300">{formatHours(sensor.totalUnsafeHours)}</td>

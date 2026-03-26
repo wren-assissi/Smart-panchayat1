@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronRight, Leaf, AlertCircle, BarChart3 } from 'lucide-react';
+import { ChevronRight, Leaf, AlertCircle, BarChart3, TrendingUp } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePanchayat } from '../context/PanchayatContext';
 import { getVillagers, getSensors, getDashboardStats, getAggregateReport } from '../api';
@@ -10,12 +10,13 @@ import SensorSearch from '../components/dashboard/SensorSearch';
 import AggregateReportPanel from '../components/dashboard/AggregateReportPanel';
 import { useNavigate } from 'react-router-dom';
 import { Map } from 'lucide-react';
+import usePersistentSidebar from '../hooks/usePersistentSidebar';
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const { selectedPanchayat, selectedDistrict, selectedBlock } = usePanchayat();
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = usePersistentSidebar();
   const [villagers, setVillagers] = useState([]);
   const [sensors, setSensors] = useState([]);
   const [stats, setStats] = useState(null);
@@ -25,22 +26,61 @@ export default function DashboardPage() {
   const [loadingAggregate, setLoadingAggregate] = useState(false);
   const [aggregateError, setAggregateError] = useState('');
   const [showAggregateReport, setShowAggregateReport] = useState(false);
+  const [aggregateTrendRange, setAggregateTrendRange] = useState('24h');
   const [error, setError] = useState('');
 
-  const fetchData = useCallback(async () => {
-    if (!selectedPanchayat?.id) {
-      setVillagers([]);
-      setSensors([]);
-      setStats(null);
-      return;
+  const currentScope = React.useMemo(() => {
+    if (selectedPanchayat?.id) {
+      return {
+        level: 'panchayat',
+        name: selectedPanchayat.name,
+        params: { panchayatId: selectedPanchayat.id },
+      };
     }
 
+    if (selectedBlock?.id) {
+      return {
+        level: 'block',
+        name: selectedBlock.name,
+        params: { blockId: selectedBlock.id },
+      };
+    }
+
+    if (selectedDistrict?.id) {
+      return {
+        level: 'district',
+        name: selectedDistrict.name,
+        params: { districtId: selectedDistrict.id },
+      };
+    }
+
+    if (user?.role === 'state') {
+      return {
+        level: 'state',
+        name: 'Kerala',
+        params: {},
+      };
+    }
+
+    return {
+      level: user?.role || 'state',
+      name: user?.location_name || 'Kerala',
+      params: {},
+    };
+  }, [selectedBlock?.id, selectedBlock?.name, selectedDistrict?.id, selectedDistrict?.name, selectedPanchayat?.id, selectedPanchayat?.name, user?.location_name, user?.role]);
+
+  const scopeHeading = `${currentScope.level.charAt(0).toUpperCase()}${currentScope.level.slice(1)} Dashboard`;
+  const scopeSearchContext = currentScope.level === 'state'
+    ? 'the state'
+    : `this ${currentScope.level}`;
+
+  const fetchData = useCallback(async () => {
     setLoadingData(true);
     setError('');
     try {
       const [vData, sData] = await Promise.all([
-        getVillagers(selectedPanchayat.id),
-        getSensors(selectedPanchayat.id),
+        getVillagers(currentScope.params),
+        getSensors(currentScope.params),
       ]);
       setVillagers(vData);
       setSensors(sData);
@@ -49,28 +89,27 @@ export default function DashboardPage() {
     } finally {
       setLoadingData(false);
     }
-  }, [selectedPanchayat?.id]);
+  }, [currentScope.params]);
 
   const navigate = useNavigate();
 
   const fetchStats = useCallback(async () => {
-    if (!selectedPanchayat?.id) return;
     setLoadingStats(true);
     try {
-      const data = await getDashboardStats(selectedPanchayat.id);
+      const data = await getDashboardStats(currentScope.params);
       setStats(data);
     } catch (err) {
       console.error(err);
     } finally {
       setLoadingStats(false);
     }
-  }, [selectedPanchayat?.id]);
+  }, [currentScope.params]);
 
   const fetchAggregateReport = useCallback(async () => {
     setLoadingAggregate(true);
     setAggregateError('');
     try {
-      const data = await getAggregateReport();
+      const data = await getAggregateReport({ trendRange: '30d' });
       setAggregateReport(data);
     } catch (err) {
       setAggregateError(err.response?.data?.error || 'Failed to load aggregated report');
@@ -86,10 +125,9 @@ export default function DashboardPage() {
 
   // Auto-refresh stats every 30 seconds
   useEffect(() => {
-    if (!selectedPanchayat) return;
     const interval = setInterval(fetchStats, 30000);
     return () => clearInterval(interval);
-  }, [fetchStats, selectedPanchayat]);
+  }, [fetchStats]);
 
   useEffect(() => {
     if (!showAggregateReport) return undefined;
@@ -113,10 +151,10 @@ export default function DashboardPage() {
 
   // Breadcrumb
   const breadcrumb = [
-    { label: 'Kerala', active: false },
-    selectedDistrict && { label: selectedDistrict.name, active: false },
-    selectedBlock && { label: selectedBlock.name, active: false },
-    selectedPanchayat && { label: selectedPanchayat.name, active: true },
+    { label: 'Kerala', active: currentScope.level === 'state' },
+    selectedDistrict && { label: selectedDistrict.name, active: currentScope.level === 'district' },
+    selectedBlock && { label: selectedBlock.name, active: currentScope.level === 'block' },
+    selectedPanchayat && { label: selectedPanchayat.name, active: currentScope.level === 'panchayat' },
   ].filter(Boolean);
 
   const sensorMapCard = (
@@ -179,6 +217,60 @@ export default function DashboardPage() {
     </button>
   );
 
+  const trendAnalysisButton = (
+    <button
+      onClick={() => navigate('/trend-analysis')}
+      className="group min-h-64 w-full rounded-2xl border border-orange-800/40 bg-gradient-to-br from-orange-950/60 via-gray-900 to-gray-950 p-6 text-left transition-colors hover:border-orange-600/60 hover:from-orange-900/60 hover:to-gray-900"
+    >
+      <div className="flex h-full flex-col justify-between">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+          <div className="min-w-0">
+            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-400/80">Analytics</div>
+            <h2 className="mt-3 text-2xl font-bold text-white">Trend Analysis</h2>
+            <p className="mt-2 max-w-sm text-sm text-gray-400">
+              Open monitoring and interval comparison charts for a selected scope.
+            </p>
+          </div>
+          <div className="rounded-xl border border-orange-700/50 bg-orange-900/30 p-3 text-orange-300 transition-colors group-hover:bg-orange-900/50">
+            <TrendingUp className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="mt-8 inline-flex items-center gap-2 text-sm font-medium text-orange-300">
+          <TrendingUp className="w-4 h-4" />
+          Open Trend Analysis
+        </div>
+      </div>
+    </button>
+  );
+
+  const thresholdAnalyticsButton = (
+    <button
+      onClick={() => navigate('/analytics')}
+      className="group min-h-64 w-full rounded-2xl border border-rose-800/40 bg-gradient-to-br from-rose-950/60 via-gray-900 to-gray-950 p-6 text-left transition-colors hover:border-rose-600/60 hover:from-rose-900/60 hover:to-gray-900"
+    >
+      <div className="flex h-full flex-col justify-between">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+          <div className="min-w-0">
+            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-rose-400/80">Analytics</div>
+            <h2 className="mt-3 text-2xl font-bold text-white">Threshold Analytics</h2>
+            <p className="mt-2 max-w-sm text-sm text-gray-400">
+              Inspect breaches, unsafe duration, and threshold-based alerts across your scope.
+            </p>
+          </div>
+          <div className="rounded-xl border border-rose-700/50 bg-rose-900/30 p-3 text-rose-300 transition-colors group-hover:bg-rose-900/50">
+            <BarChart3 className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="mt-8 inline-flex items-center gap-2 text-sm font-medium text-rose-300">
+          <BarChart3 className="w-4 h-4" />
+          Open Threshold Analytics
+        </div>
+      </div>
+    </button>
+  );
+
   return (
     <div className="h-screen flex overflow-hidden bg-gray-950">
       {/* Sidebar */}
@@ -233,36 +325,16 @@ export default function DashboardPage() {
                 report={aggregateReport}
                 loading={loadingAggregate}
                 error={aggregateError}
+                trendRange={aggregateTrendRange}
+                onTrendRangeChange={setAggregateTrendRange}
               />
             )}
 
-            {!selectedPanchayat ? (
-              <>
-                <div className="card p-6">
-                  <div className="text-center max-w-sm mx-auto">
-                    <div className="w-16 h-16 rounded-2xl bg-green-900/30 border border-green-800/40 flex items-center justify-center mx-auto mb-4">
-                      <Leaf className="w-8 h-8 text-green-500" />
-                    </div>
-                    <h2 className="text-xl font-bold text-gray-200 mb-2">Select a Panchayat</h2>
-                    <p className="text-gray-500 text-sm">
-                      {user?.role === 'panchayat'
-                        ? 'Your panchayat data is loading...'
-                        : 'Use the sidebar to navigate: select a district, block, and panchayat to view its detailed dashboard.'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-                  {sensorMapCard}
-                  {aggregateReportButton}
-                </div>
-              </>
-            ) : (
-              <>
-              {/* Panchayat header */}
+            <>
+              {/* Scope header */}
               <div>
-                <h1 className="text-xl font-bold text-white">{selectedPanchayat.name}</h1>
-                <p className="text-sm text-gray-500 mt-0.5">Panchayat Dashboard · Kerala</p>
+                <h1 className="text-xl font-bold text-white">{currentScope.name}</h1>
+                <p className="text-sm text-gray-500 mt-0.5">{scopeHeading} · Kerala</p>
               </div>
 
               {error && (
@@ -273,14 +345,20 @@ export default function DashboardPage() {
               )}
 
               {/* Stats Bar */}
-              <StatsBar stats={stats} loading={loadingStats} panchayatName={selectedPanchayat.name} />
+              <StatsBar stats={stats} loading={loadingStats} />
+
+              {!loadingData && (
+                <div className="rounded-xl border border-gray-800/70 bg-gray-900/40 px-4 py-3 text-sm text-gray-400">
+                  Search villagers and sensors across {scopeSearchContext}.
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
                 <div className="space-y-4">
                   <div className="h-96 md:h-auto">
                     <VillagerSearch
                       villagers={villagers}
-                      panchayatId={selectedPanchayat.id}
+                      panchayatId={selectedPanchayat?.id}
                       onRefresh={onRefresh}
                     />
                   </div>
@@ -289,15 +367,17 @@ export default function DashboardPage() {
                 <div className="h-96 md:h-auto">
                   <SensorSearch
                     sensors={sensors}
-                    panchayatId={selectedPanchayat.id}
+                    panchayatId={selectedPanchayat?.id}
                     onRefresh={onRefresh}
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-stretch">
                 {sensorMapCard}
                 {aggregateReportButton}
+                {trendAnalysisButton}
+                {thresholdAnalyticsButton}
               </div>
 
               {/* Hint for non-write users */}
@@ -306,8 +386,7 @@ export default function DashboardPage() {
                   View-only mode — you are logged in as a <span className="text-gray-500 capitalize">{user?.role}-level</span> user
                 </div>
               )}
-              </>
-            )}
+            </>
           </div>
         </main>
       </div>
